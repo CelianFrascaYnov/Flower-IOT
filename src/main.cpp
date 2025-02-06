@@ -211,7 +211,7 @@ void loop() {
     Serial.printf("🌡️ Air -> Température : %.2f°C | Humidité : %.2f%%\n", temp.temperature, humidity.relative_humidity);
     Serial.println("----------------------------------");
 
-    digitalWrite(BLUE_LED_PIN, HIGH); // Rallumer la LED après lecture
+    digitalWrite(BLUE_LED_PIN, HIGH);
 
     delay(5000);  // Rafraîchissement toutes les 5 secondes
 }
