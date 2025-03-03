@@ -2,11 +2,11 @@
 #include <WiFi.h>
 #include <mqtt_client.h>
 
-#define RELAY_PIN 5  // GPIO pour le relais (connecté à la pompe)
+#define RELAY_PIN D5  // GPIO pour le relais (connecté à la pompe)
 
 // WiFi
-#define WIFI_SSID "iPhone de Quentin"
-#define WIFI_PASSWORD "gggggggg"
+#define WIFI_SSID "WifiCadeau"
+#define WIFI_PASSWORD "CadeauWifi"
 
 // MQTT
 #define MQTT_BROKER "mqtt://192.0.0.3:1883"

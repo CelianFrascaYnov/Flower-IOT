@@ -14,8 +14,8 @@
 #define WET_VALUE 1450
 
 // WiFi
-#define WIFI_SSID "CMF"
-#define WIFI_PASSWORD "gggggggg"
+#define WIFI_SSID "WifiCadeau"
+#define WIFI_PASSWORD "CadeauWifi"
 
 // MQTT Configuration
 #define MQTT_BROKER "mqtt://192.168.121.123:1883"
