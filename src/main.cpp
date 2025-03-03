@@ -13,16 +13,12 @@
 #define DRY_VALUE 3150
 #define WET_VALUE 1450
 
-// Calibration du capteur de lumière
-#define DARK_VALUE 4095
-#define BRIGHT_VALUE 40
-
 // WiFi
-#define WIFI_SSID "iPhone de Quentin"
+#define WIFI_SSID "CMF"
 #define WIFI_PASSWORD "gggggggg"
 
 // MQTT Configuration
-#define MQTT_BROKER "mqtt://192.0.0.3:1883"
+#define MQTT_BROKER "mqtt://192.168.121.123:1883"
 #define MQTT_TOPIC_SOL "capteur/sol"
 #define MQTT_TOPIC_LUMIERE "capteur/lumiere"
 #define MQTT_TOPIC_TEMPERATURE "capteur/temperature"
@@ -90,6 +86,24 @@ void messageReceived(esp_mqtt_event_handle_t event) {
     Serial.println("📥 Message reçu:");
     Serial.printf("📌 Topic: %.*s\n", event->topic_len, event->topic);
     Serial.printf("📨 Payload: %.*s\n", event->data_len, event->data);
+}
+
+float analogToLux(int analogValue) {
+    if (analogValue <= 0) return 0;  // Évite la division par zéro
+
+    // **Inversion des valeurs analogiques**
+    analogValue = 4095 - analogValue;
+
+    // Conversion en tension (capteur branché en 5V)
+    float voltage = (analogValue * 5.0) / 4095.0;
+
+    // Calcul de la résistance du LDR (pull-up de 10kΩ)
+    float resistance = (10000.0 * (5.0 - voltage)) / voltage;
+
+    // Nouvelle conversion en Lux (ajustée pour éviter les valeurs négatives)
+    float lux = 600000.0 / resistance;  // Ajuste la constante si nécessaire
+
+    return lux > 0 ? lux : 0;  // Évite les valeurs négatives
 }
 
 // Gestion des événements MQTT
@@ -189,10 +203,16 @@ void loop() {
     int moisturePercentage = map(sensorValue, DRY_VALUE, WET_VALUE, 0, 100);
     moisturePercentage = constrain(moisturePercentage, 0, 100);
 
-    // Lecture du capteur de lumière
     int lightValue = analogRead(LIGHT_SENSOR_PIN);
-    int lightPercentage = map(lightValue, DARK_VALUE, BRIGHT_VALUE, 0, 100);
-    lightPercentage = constrain(lightPercentage, 0, 100);
+    float voltage = (lightValue * 5.0) / 4095.0;  // Conversion de la valeur brute en tension
+    float lightLux = analogToLux(lightValue);
+    float resistance = (10000.0 * (5.0 - voltage)) / voltage;  // Calcul de la résistance du LDR
+
+    Serial.printf("🔍 Valeur brute : %d | Voltage : %.2fV | Résistance estimée : %.2fΩ | Lux estimé : %.2f\n",
+                  lightValue,
+                  voltage,
+                  resistance,
+                  lightLux);
 
     // Lecture du AHT10 (température et humidité)
     sensors_event_t humidity, temp;
@@ -200,18 +220,18 @@ void loop() {
 
     // Envoi des données MQTT
     sendMQTTData(MQTT_TOPIC_SOL, moisturePercentage);
-    sendMQTTData(MQTT_TOPIC_LUMIERE, lightPercentage);
+    sendMQTTData(MQTT_TOPIC_LUMIERE, lightLux);  // Envoi en lux au lieu de %
     sendMQTTData(MQTT_TOPIC_TEMPERATURE, temp.temperature);
     sendMQTTData(MQTT_TOPIC_HUMIDITE, humidity.relative_humidity);
 
     // Affichage des résultats
     Serial.println("📡 [NOUVELLE LECTURE]");
     Serial.printf("🌱 Sol -> Humidité : %d%%\n", moisturePercentage);
-    Serial.printf("💡 Lumière -> Luminosité : %d%%\n", lightPercentage);
+    Serial.printf("💡 Lumière -> %.2f lux\n", lightLux);
     Serial.printf("🌡️ Air -> Température : %.2f°C | Humidité : %.2f%%\n", temp.temperature, humidity.relative_humidity);
     Serial.println("----------------------------------");
 
     digitalWrite(BLUE_LED_PIN, HIGH);
 
-    delay(5000);  // Rafraîchissement toutes les 5 secondes
+    delay(1000);
 }
