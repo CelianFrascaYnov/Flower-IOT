@@ -7,8 +7,8 @@
 #define LED_PIN D9     // LED d’indication (optionnel)
 
 // WiFi
-#define WIFI_SSID "WifiCadeau"
-#define WIFI_PASSWORD "CadeauWifi"
+#define WIFI_SSID "CMF"
+#define WIFI_PASSWORD "gggggggg"
 
 // MQTT Configuration
 #define MQTT_BROKER "mqtt://10.69.0.143:1883"
