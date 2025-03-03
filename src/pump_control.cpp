@@ -11,7 +11,7 @@
 #define WIFI_PASSWORD "CadeauWifi"
 
 // MQTT Configuration
-#define MQTT_BROKER "mqtt://192.168.121.123:1883"
+#define MQTT_BROKER "mqtt://10.69.0.143:1883"
 #define MQTT_TOPIC_POMPE "pompe/commande"
 
 esp_mqtt_client_handle_t client;
