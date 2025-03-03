@@ -2,52 +2,77 @@
 #include <WiFi.h>
 #include <mqtt_client.h>
 
+// Définition des broches
 #define RELAY_PIN D5  // GPIO pour le relais (connecté à la pompe)
+#define LED_PIN D9     // LED d’indication (optionnel)
 
 // WiFi
 #define WIFI_SSID "WifiCadeau"
 #define WIFI_PASSWORD "CadeauWifi"
 
-// MQTT
-#define MQTT_BROKER "mqtt://192.0.0.3:1883"
+// MQTT Configuration
+#define MQTT_BROKER "mqtt://192.168.121.123:1883"
 #define MQTT_TOPIC_POMPE "pompe/commande"
 
 esp_mqtt_client_handle_t client;
 
+// Déclarations des fonctions
 void connectToWiFi();
 void connectToMQTT();
+bool isWiFiConnected();
+bool isMQTTConnected();
 void reconnectWiFi();
 void reconnectMQTT();
 void messageReceived(esp_mqtt_event_handle_t event);
 
-// Connexion WiFi
+// Connexion au WiFi avec affichage de l'IP
 void connectToWiFi() {
-    Serial.print("Connexion WiFi...");
+    Serial.print("Connexion au WiFi...");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {  // 10 secondes max (20 x 500ms)
         Serial.print(".");
         delay(500);
         attempts++;
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n✅ Connecté au WiFi");
+        Serial.println("\n✅ WiFi connecté !");
+        Serial.print("📡 Adresse IP de l'ESP32 : ");
+        Serial.println(WiFi.localIP());  // Affichage de l'adresse IP
     } else {
-        Serial.println("\n❌ Échec de connexion WiFi");
+        Serial.println("\n❌ Échec de la connexion WiFi !");
     }
 }
 
-// Reconnexion WiFi
+// Vérifier si le WiFi est connecté
+bool isWiFiConnected() {
+    return WiFi.status() == WL_CONNECTED;
+}
+
+// Vérifier si MQTT est connecté
+bool isMQTTConnected() {
+    return client != nullptr;
+}
+
+// Reconnexion au WiFi si nécessaire
 void reconnectWiFi() {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("⚠️ WiFi perdu, reconnexion...");
+    if (!isWiFiConnected()) {
+        Serial.println("⚠️ WiFi déconnecté, tentative de reconnexion...");
         connectToWiFi();
     }
 }
 
-// Callback de réception des messages MQTT
+// Reconnexion au MQTT si nécessaire
+void reconnectMQTT() {
+    if (!isMQTTConnected()) {
+        Serial.println("⚠️ Client MQTT non connecté, tentative de reconnexion...");
+        connectToMQTT();
+    }
+}
+
+// Callback quand un message est reçu
 void messageReceived(esp_mqtt_event_handle_t event) {
     String topic = String(event->topic, event->topic_len);
     String payload = String(event->data, event->data_len);
@@ -70,7 +95,7 @@ void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
     switch (event_id) {
         case MQTT_EVENT_CONNECTED:
-            Serial.println("✅ Connecté au MQTT");
+            Serial.println("✅ Connecté au broker MQTT.");
             esp_mqtt_client_subscribe(client, MQTT_TOPIC_POMPE, 0);
             break;
 
@@ -88,10 +113,10 @@ void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event
     }
 }
 
-// Connexion au broker MQTT
+// Connexion MQTT avec logs (uniquement si le WiFi est actif)
 void connectToMQTT() {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("🚫 WiFi non connecté, MQTT annulé.");
+    if (!isWiFiConnected()) {
+        Serial.println("🚫 Connexion MQTT annulée : WiFi non disponible.");
         return;
     }
 
@@ -102,13 +127,6 @@ void connectToMQTT() {
     client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
-}
-
-// Reconnexion MQTT
-void reconnectMQTT() {
-    if (client == nullptr) {
-        connectToMQTT();
-    }
 }
 
 void setup() {
