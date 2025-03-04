@@ -1,6 +1,6 @@
 # Création du fichier README.md
 
-readme_content = """# 🌱 Flower IOT - Système de Surveillance et d’Arrosage Automatisé
+# 🌱 Flower IOT - Système de Surveillance et d’Arrosage Automatisé
 
 ## 📘 Introduction
 **Flower IOT** est un projet de surveillance et de gestion intelligente de l'environnement des plantes basé sur l’**ESP32-S3** et utilisant **Node-RED** pour une interface de visualisation en temps réel.
@@ -63,3 +63,5 @@ Ce système permet de **monitorer** et **automatiser** l’arrosage des plantes 
 ### 📌 Automatisations
 - La pompe est déclenchée **uniquement si l'humidité du sol est trop basse et si le réservoir d’eau contient encore de l’eau**.
 - L’interface permet de modifier les **seuils de déclenchement** selon le type de plante.
+
+  
