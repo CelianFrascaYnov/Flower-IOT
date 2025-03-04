@@ -3,13 +3,13 @@
 #include <mqtt_client.h>
 
 // Définition des broches
-#define PIN_RELAY D5  // GPIO pour le relais (connecté à la pompe)
+#define PIN_RELAY D5   // GPIO pour le relais (connecté à la pompe)
 #define LED_PIN D9     // LED d’indication (optionnel)
-#define WATER_SENSOR_PIN A0   // Capteur de niveau d'eau
+#define WATER_SENSOR_PIN A0  // Capteur de niveau d'eau
 
 // Étalonnage du capteur de niveau d'eau
 #define DRY_VALUE  100  // Valeur quand le capteur est sec
-#define WET_VALUE 80  // Valeur quand le capteur est totalement immergé
+#define WET_VALUE  80   // Valeur quand le capteur est totalement immergé
 
 // WiFi
 #define WIFI_SSID "CMF"
@@ -22,7 +22,7 @@
 #define MQTT_TOPIC_POMPE_ETAT "pompe/etat"
 
 bool pompeActive = false;
-bool blocagePompe = false; // Bloque l'activation de la pompe si le niveau d'eau est trop bas
+bool blocagePompe = false;  // Bloque l'activation de la pompe si le niveau d'eau est trop bas
 
 esp_mqtt_client_handle_t client;
 
@@ -34,14 +34,15 @@ bool isMQTTConnected();
 void reconnectWiFi();
 void reconnectMQTT();
 void messageReceived(esp_mqtt_event_handle_t event);
+void checkWaterLevel(); // Vérifie le niveau d'eau et met à jour le statut
 
-// Connexion au WiFi avec affichage de l'IP
+// Connexion au WiFi
 void connectToWiFi() {
     Serial.print("Connexion au WiFi...");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {  // 10 secondes max (20 x 500ms)
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
         Serial.print(".");
         delay(500);
         attempts++;
@@ -49,8 +50,8 @@ void connectToWiFi() {
 
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("\n✅ WiFi connecté !");
-        Serial.print("📡 Adresse IP de l'ESP32 : ");
-        Serial.println(WiFi.localIP());  // Affichage de l'adresse IP
+        Serial.print("📡 Adresse IP : ");
+        Serial.println(WiFi.localIP());
     } else {
         Serial.println("\n❌ Échec de la connexion WiFi !");
     }
@@ -66,7 +67,7 @@ bool isMQTTConnected() {
     return client != nullptr;
 }
 
-// Reconnexion au WiFi si nécessaire
+// Reconnexion au WiFi
 void reconnectWiFi() {
     if (!isWiFiConnected()) {
         Serial.println("⚠️ WiFi déconnecté, tentative de reconnexion...");
@@ -74,7 +75,7 @@ void reconnectWiFi() {
     }
 }
 
-// Reconnexion au MQTT si nécessaire
+// Reconnexion au MQTT
 void reconnectMQTT() {
     if (!isMQTTConnected()) {
         Serial.println("⚠️ Client MQTT non connecté, tentative de reconnexion...");
@@ -82,10 +83,10 @@ void reconnectMQTT() {
     }
 }
 
-// Envoi des données aux topics MQTT avec logs
+// Envoi des données MQTT
 void sendMQTTData(const char* topic, float value) {
     if (!isMQTTConnected()) {
-        Serial.println("🚫 Données non envoyées : MQTT indisponible.");
+        Serial.println("🚫 MQTT indisponible, données non envoyées.");
         reconnectMQTT();
         return;
     }
@@ -101,20 +102,48 @@ void sendMQTTData(const char* topic, float value) {
     }
 }
 
-// Fonction pour envoyer un message MQTT en texte ("ON" ou "OFF")
+// Envoi d'un message MQTT ("ON" ou "OFF")
 void sendMQTTMessage(const char* topic, const char* message) {
     if (!isMQTTConnected()) {
-        Serial.println("🚫 Message non envoyé : MQTT indisponible.");
+        Serial.println("🚫 MQTT indisponible, message non envoyé.");
         reconnectMQTT();
         return;
     }
 
-    int msg_id = esp_mqtt_client_publish(client, topic, message, 0, 0, 0);
+    esp_mqtt_client_publish(client, topic, message, 0, 0, 0);
+}
 
-    if (msg_id != -1) {
-        Serial.printf("📤 Message envoyé : %s -> %s\n", topic, message);
-    } else {
-        Serial.printf("⚠️ Échec de l'envoi MQTT pour %s\n", topic);
+// Vérification et gestion du niveau d'eau
+void checkWaterLevel() {
+    int rawValue = analogRead(WATER_SENSOR_PIN);
+    Serial.print("Valeur du capteur : ");
+    Serial.println(rawValue);
+
+    if (rawValue < DRY_VALUE) {
+        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 0.0);
+
+        // Si la pompe est allumée et l'eau est trop basse, éteindre immédiatement
+        if (pompeActive) {
+            Serial.println("⚠️ Niveau d'eau trop bas ! Pompe arrêtée.");
+            digitalWrite(PIN_RELAY, LOW);
+            pompeActive = false;
+            sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ALERTE: Niveau d'eau bas !");
+        }
+
+        // Bloquer toute future activation
+        blocagePompe = true;
+    }
+    else if (rawValue > WET_VALUE) {
+        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 100.0);
+
+        // Si le niveau d'eau est suffisant, lever le blocage
+        if (blocagePompe) {
+            Serial.println("✅ Niveau d'eau suffisant, pompe réactivable.");
+            blocagePompe = false;
+        }
+    }
+    else {
+        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 50.0);
     }
 }
 
@@ -125,21 +154,25 @@ void messageReceived(esp_mqtt_event_handle_t event) {
 
     Serial.printf("📥 Message reçu sur %s : %s\n", topic.c_str(), payload.c_str());
 
+    // Vérification du niveau d'eau avant d'activer la pompe
+    checkWaterLevel();
+
     if (topic == MQTT_TOPIC_POMPE) {
         if (payload == "ON") {
-            if (!blocagePompe) {  // Vérifie si l'eau est suffisante avant d'activer la pompe
+            if (!blocagePompe) {
                 digitalWrite(PIN_RELAY, HIGH);
                 pompeActive = true;
-                sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ON");  // Publier l'état de la pompe
+                sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ON");
                 Serial.println("💧 Pompe activée !");
             } else {
                 Serial.println("⚠️ Activation refusée : Niveau d'eau trop bas !");
                 sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ALERTE: Niveau d'eau bas !");
             }
-        } else if (payload == "OFF") {
+        }
+        else if (payload == "OFF") {
             digitalWrite(PIN_RELAY, LOW);
             pompeActive = false;
-            sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "OFF");  // Publier l'état de la pompe
+            sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "OFF");
             Serial.println("🚫 Pompe désactivée !");
         }
     }
@@ -168,7 +201,7 @@ void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event
     }
 }
 
-// Connexion MQTT avec logs (uniquement si le WiFi est actif)
+// Connexion MQTT
 void connectToMQTT() {
     if (!isWiFiConnected()) {
         Serial.println("🚫 Connexion MQTT annulée : WiFi non disponible.");
@@ -187,7 +220,7 @@ void connectToMQTT() {
 void setup() {
     Serial.begin(115200);
     pinMode(PIN_RELAY, OUTPUT);
-    digitalWrite(PIN_RELAY, LOW);  // Pompe éteinte au démarrage
+    digitalWrite(PIN_RELAY, LOW);
     pinMode(WATER_SENSOR_PIN, INPUT);
 
     connectToWiFi();
@@ -197,37 +230,6 @@ void setup() {
 void loop() {
     reconnectWiFi();
     reconnectMQTT();
-
-    int rawValue = analogRead(WATER_SENSOR_PIN); // Lecture brute du capteur
-
-    Serial.print("Valeur brute du capteur : ");
-    Serial.println(rawValue);
-
-    // Vérification du niveau d'eau et envoi de l'état
-    if (rawValue < DRY_VALUE) {
-        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 0.0);
-
-        // Si l'eau est trop basse, désactiver la pompe et bloquer son activation
-        if (pompeActive) {
-            Serial.println("⚠️ Niveau d'eau trop bas ! Pompe arrêtée.");
-            digitalWrite(PIN_RELAY, LOW);
-            pompeActive = false;
-            blocagePompe = true;  // Bloquer l'activation de la pompe tant que l'eau est insuffisante
-            sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ALERTE: Niveau d'eau bas !");
-        }
-    }
-    else if (rawValue > WET_VALUE) {
-        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 100.0);
-
-        // Si l'eau est revenue à un niveau normal, autoriser l'activation de la pompe
-        if (blocagePompe) {
-            Serial.println("✅ Niveau d'eau suffisant, pompe réactivable.");
-            blocagePompe = false;
-        }
-    }
-    else {
-        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 50.0);
-    }
-
+    checkWaterLevel();
     delay(1000);
 }
