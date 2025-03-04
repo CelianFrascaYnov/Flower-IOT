@@ -1,5 +1,3 @@
-# Création du fichier README.md
-
 # 🌱 Flower IOT - Système de Surveillance et d’Arrosage Automatisé
 
 ## 📘 Introduction
