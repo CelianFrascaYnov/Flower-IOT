@@ -5,11 +5,11 @@
 // Définition des broches
 #define PIN_RELAY D5   // GPIO pour le relais (connecté à la pompe)
 #define LED_PIN D9     // LED d’indication (optionnel)
-#define WATER_SENSOR_PIN A0  // Capteur de niveau d'eau
+#define WATER_SENSOR_PIN A2  // Capteur de niveau d'eau
 
 // Étalonnage du capteur de niveau d'eau
-#define DRY_VALUE  100  // Valeur quand le capteur est sec
-#define WET_VALUE  80   // Valeur quand le capteur est totalement immergé
+#define DRY_VALUE  2000  // Valeur quand le capteur est sec
+#define WET_VALUE  3000   // Valeur quand le capteur est totalement immergé
 
 // WiFi
 #define WIFI_SSID "CMF"
@@ -221,7 +221,9 @@ void setup() {
     Serial.begin(115200);
     pinMode(PIN_RELAY, OUTPUT);
     digitalWrite(PIN_RELAY, LOW);
-    pinMode(WATER_SENSOR_PIN, INPUT);
+    pinMode(WATER_SENSOR_PIN, ANALOG);
+    analogReadResolution(12);
+    analogSetAttenuation(ADC_0db);
 
     connectToWiFi();
     connectToMQTT();
