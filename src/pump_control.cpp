@@ -3,16 +3,26 @@
 #include <mqtt_client.h>
 
 // Définition des broches
-#define RELAY_PIN D5  // GPIO pour le relais (connecté à la pompe)
+#define PIN_RELAY D5  // GPIO pour le relais (connecté à la pompe)
 #define LED_PIN D9     // LED d’indication (optionnel)
+#define WATER_SENSOR_PIN A0   // Capteur de niveau d'eau
+
+// Étalonnage du capteur de niveau d'eau
+#define DRY_VALUE  100  // Valeur quand le capteur est sec
+#define WET_VALUE 80  // Valeur quand le capteur est totalement immergé
 
 // WiFi
 #define WIFI_SSID "CMF"
 #define WIFI_PASSWORD "gggggggg"
 
 // MQTT Configuration
-#define MQTT_BROKER "mqtt://10.69.0.143:1883"
+#define MQTT_BROKER "mqtt://192.168.143.123:1883"
 #define MQTT_TOPIC_POMPE "pompe/commande"
+#define MQTT_TOPIC_WATER_LEVEL "capteur/eau"
+#define MQTT_TOPIC_POMPE_ETAT "pompe/etat"
+
+bool pompeActive = false;
+bool blocagePompe = false; // Bloque l'activation de la pompe si le niveau d'eau est trop bas
 
 esp_mqtt_client_handle_t client;
 
@@ -72,7 +82,43 @@ void reconnectMQTT() {
     }
 }
 
-// Callback quand un message est reçu
+// Envoi des données aux topics MQTT avec logs
+void sendMQTTData(const char* topic, float value) {
+    if (!isMQTTConnected()) {
+        Serial.println("🚫 Données non envoyées : MQTT indisponible.");
+        reconnectMQTT();
+        return;
+    }
+
+    char payload[20];
+    snprintf(payload, sizeof(payload), "%.2f", value);
+    int msg_id = esp_mqtt_client_publish(client, topic, payload, 0, 0, 0);
+
+    if (msg_id != -1) {
+        Serial.printf("📤 Données envoyées : %s -> %s\n", topic, payload);
+    } else {
+        Serial.printf("⚠️ Échec de l'envoi MQTT pour %s\n", topic);
+    }
+}
+
+// Fonction pour envoyer un message MQTT en texte ("ON" ou "OFF")
+void sendMQTTMessage(const char* topic, const char* message) {
+    if (!isMQTTConnected()) {
+        Serial.println("🚫 Message non envoyé : MQTT indisponible.");
+        reconnectMQTT();
+        return;
+    }
+
+    int msg_id = esp_mqtt_client_publish(client, topic, message, 0, 0, 0);
+
+    if (msg_id != -1) {
+        Serial.printf("📤 Message envoyé : %s -> %s\n", topic, message);
+    } else {
+        Serial.printf("⚠️ Échec de l'envoi MQTT pour %s\n", topic);
+    }
+}
+
+// Callback de réception des messages MQTT
 void messageReceived(esp_mqtt_event_handle_t event) {
     String topic = String(event->topic, event->topic_len);
     String payload = String(event->data, event->data_len);
@@ -81,10 +127,19 @@ void messageReceived(esp_mqtt_event_handle_t event) {
 
     if (topic == MQTT_TOPIC_POMPE) {
         if (payload == "ON") {
-            digitalWrite(RELAY_PIN, HIGH);
-            Serial.println("💧 Pompe activée !");
+            if (!blocagePompe) {  // Vérifie si l'eau est suffisante avant d'activer la pompe
+                digitalWrite(PIN_RELAY, HIGH);
+                pompeActive = true;
+                sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ON");  // Publier l'état de la pompe
+                Serial.println("💧 Pompe activée !");
+            } else {
+                Serial.println("⚠️ Activation refusée : Niveau d'eau trop bas !");
+                sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ALERTE: Niveau d'eau bas !");
+            }
         } else if (payload == "OFF") {
-            digitalWrite(RELAY_PIN, LOW);
+            digitalWrite(PIN_RELAY, LOW);
+            pompeActive = false;
+            sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "OFF");  // Publier l'état de la pompe
             Serial.println("🚫 Pompe désactivée !");
         }
     }
@@ -131,8 +186,9 @@ void connectToMQTT() {
 
 void setup() {
     Serial.begin(115200);
-    pinMode(RELAY_PIN, OUTPUT);
-    digitalWrite(RELAY_PIN, LOW);  // Pompe éteinte au démarrage
+    pinMode(PIN_RELAY, OUTPUT);
+    digitalWrite(PIN_RELAY, LOW);  // Pompe éteinte au démarrage
+    pinMode(WATER_SENSOR_PIN, INPUT);
 
     connectToWiFi();
     connectToMQTT();
@@ -141,5 +197,37 @@ void setup() {
 void loop() {
     reconnectWiFi();
     reconnectMQTT();
+
+    int rawValue = analogRead(WATER_SENSOR_PIN); // Lecture brute du capteur
+
+    Serial.print("Valeur brute du capteur : ");
+    Serial.println(rawValue);
+
+    // Vérification du niveau d'eau et envoi de l'état
+    if (rawValue < DRY_VALUE) {
+        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 0.0);
+
+        // Si l'eau est trop basse, désactiver la pompe et bloquer son activation
+        if (pompeActive) {
+            Serial.println("⚠️ Niveau d'eau trop bas ! Pompe arrêtée.");
+            digitalWrite(PIN_RELAY, LOW);
+            pompeActive = false;
+            blocagePompe = true;  // Bloquer l'activation de la pompe tant que l'eau est insuffisante
+            sendMQTTMessage(MQTT_TOPIC_POMPE_ETAT, "ALERTE: Niveau d'eau bas !");
+        }
+    }
+    else if (rawValue > WET_VALUE) {
+        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 100.0);
+
+        // Si l'eau est revenue à un niveau normal, autoriser l'activation de la pompe
+        if (blocagePompe) {
+            Serial.println("✅ Niveau d'eau suffisant, pompe réactivable.");
+            blocagePompe = false;
+        }
+    }
+    else {
+        sendMQTTData(MQTT_TOPIC_WATER_LEVEL, 50.0);
+    }
+
     delay(1000);
 }

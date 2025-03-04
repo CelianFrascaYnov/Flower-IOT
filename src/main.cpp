@@ -5,7 +5,7 @@
 #include <ArduinoJson.h>
 #include <Adafruit_AHTX0.h>
 
-#define SOIL_MOISTURE_PIN A0  // Capteur d'humidité du sol
+#define SOIL_MOISTURE_PIN A3  // Capteur d'humidité du sol
 #define LIGHT_SENSOR_PIN A1   // Photoresistor
 #define BLUE_LED_PIN D9       // LED d'indication
 
@@ -14,11 +14,11 @@
 #define WET_VALUE 1450
 
 // WiFi
-#define WIFI_SSID "WifiCadeau"
-#define WIFI_PASSWORD "CadeauWifi"
+#define WIFI_SSID "CMF"
+#define WIFI_PASSWORD "gggggggg"
 
 // MQTT Configuration
-#define MQTT_BROKER "mqtt://192.168.121.123:1883"
+#define MQTT_BROKER "mqtt://192.168.143.123:1883"
 #define MQTT_TOPIC_SOL "capteur/sol"
 #define MQTT_TOPIC_LUMIERE "capteur/lumiere"
 #define MQTT_TOPIC_TEMPERATURE "capteur/temperature"
